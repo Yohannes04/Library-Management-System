@@ -11,4 +11,17 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
-module.exports = pool;
+const testConnection = async () => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.ping();
+    console.log(`Database connection established: ${process.env.DB_NAME || 'LibraryManagementDB'}`);
+  } finally {
+    connection.release();
+  }
+};
+
+module.exports = {
+  pool,
+  testConnection
+};

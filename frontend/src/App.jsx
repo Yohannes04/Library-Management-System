@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
 import Login from './pages/Login'
+import Register from './pages/Register'
+import VerifyEmail from './pages/VerifyEmail'
 import MemberDashboard from './pages/MemberDashboard'
 import './App.css'
 
@@ -37,7 +39,7 @@ function LandingPage() {
         </div>
         <div className="nav-actions">
           <button className="btn ghost" type="button" onClick={() => navigate('/signin')}>Sign in</button>
-          <button className="btn primary" type="button" onClick={() => navigate('/signin')}>Get started</button>
+          <button className="btn primary" type="button" onClick={() => navigate('/register')}>Get started</button>
         </div>
       </nav>
 
@@ -51,7 +53,7 @@ function LandingPage() {
               thousands of titles, manage borrowings, and rediscover the joy of reading.
             </p>
             <div className="hero-actions">
-              <button className="btn primary large" type="button" onClick={() => navigate('/signin')}>Start exploring</button>
+              <button className="btn primary large" type="button" onClick={() => navigate('/register')}>Start exploring</button>
               <a className="btn ghost large" href="#how-it-works">See how it works</a>
             </div>
             <div className="stats">
@@ -139,7 +141,7 @@ function LandingPage() {
           <strong>Lehket Library</strong>
           <p>A modern library management system built for readers and librarians.</p>
         </div>
-        <button className="btn primary" type="button" onClick={() => navigate('/signin')}>Create free account</button>
+        <button className="btn primary" type="button" onClick={() => navigate('/register')}>Create free account</button>
       </footer>
     </div>
   )
@@ -162,7 +164,7 @@ function RoleCard({ title, label, items, action, navigate }) {
       <ul>
         {items.map((item) => <li key={item}>{item}</li>)}
       </ul>
-      <button className="btn primary" type="button" onClick={() => navigate('/signin')}>{action}</button>
+      <button className="btn primary" type="button" onClick={() => navigate(label === 'For readers' ? '/register' : '/signin')}>{action}</button>
     </article>
   )
 }
@@ -174,6 +176,8 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/signin" element={<Login />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/dashboard/member" element={<MemberDashboard />} />
       </Routes>
     </BrowserRouter>
