@@ -174,7 +174,6 @@ export default function Login() {
                   <input checked={remember} onChange={(event) => setRemember(event.target.checked)} type="checkbox" />
                   Remember me
                 </label>
-                <a href="/forgot-password">Forgot password?</a>
               </div>
 
               <button className={`submit-btn ${role}`} type="submit">{config.button}</button>
