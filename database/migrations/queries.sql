@@ -189,24 +189,55 @@ CREATE TABLE BookDisposalLog (
     FOREIGN KEY (StaffID) REFERENCES Staff(StaffID)
 );
 
--- Foreign key indexes (prevents full table scans on joins)
-CREATE INDEX idx_borrowing_member ON BorrowingRecords(MemberID);
-CREATE INDEX idx_borrowing_copy ON BorrowingRecords(CopyID);
-CREATE INDEX idx_borrowing_status ON BorrowingRecords(Status);
-CREATE INDEX idx_fines_user ON Fines(UserID);
-CREATE INDEX idx_fines_status ON Fines(FineStatus);
-CREATE INDEX idx_returns_borrow ON Returns(BorrowID);
-CREATE INDEX idx_reservations_member ON Reservations(MemberID);
-CREATE INDEX idx_reservations_status ON Reservations(Status);
-CREATE INDEX idx_bookcopies_book ON BookCopies(BookID);
-CREATE INDEX idx_bookcopies_status ON BookCopies(Status);
 
--- Search indexes
-CREATE INDEX idx_books_title ON Books(Title);
-CREATE INDEX idx_books_isbn ON Books(ISBN);
-CREATE INDEX idx_users_email ON Users(Email);
+-- Users
+ALTER TABLE Users ADD COLUMN last_login DATETIME NULL;
+ALTER TABLE Users ADD COLUMN failed_login_attempts INT DEFAULT 0;
+ALTER TABLE Users ADD COLUMN account_locked_until DATETIME NULL;
+ALTER TABLE Users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE Users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
 
---Create a restricted view for member searches
+-- BorrowingRecords
+ALTER TABLE BorrowingRecords ADD COLUMN RequestCode VARCHAR(50) NOT NULL;
+ALTER TABLE BorrowingRecords ADD COLUMN ReturnDate DATE NULL;
+ALTER TABLE BorrowingRecords ADD COLUMN PickupDeadline DATETIME NULL;
+ALTER TABLE BorrowingRecords ADD COLUMN ProcessedByStaffID INT NULL;
+ALTER TABLE BorrowingRecords MODIFY DueDate DATE NULL;
+ALTER TABLE BorrowingRecords ADD FOREIGN KEY (ProcessedByStaffID) REFERENCES Staff(StaffID);
+
+-- Reservations
+ALTER TABLE Reservations ADD COLUMN RequestCode VARCHAR(50) NOT NULL;
+ALTER TABLE Reservations ADD COLUMN Priority INT DEFAULT 1;
+ALTER TABLE Reservations ADD COLUMN PickupDeadline DATETIME NULL;
+
+-- Fines
+ALTER TABLE Fines ADD COLUMN MemberID INT NOT NULL;
+ALTER TABLE Fines ADD COLUMN WaivedByStaffID INT NULL;
+ALTER TABLE Fines ADD COLUMN WaiverReason TEXT NULL;
+ALTER TABLE Fines ADD FOREIGN KEY (MemberID) REFERENCES Members(MemberID);
+ALTER TABLE Fines ADD FOREIGN KEY (WaivedByStaffID) REFERENCES Staff(StaffID);
+
+-- Payments
+ALTER TABLE Payments ADD COLUMN ReceivedByStaffID INT NOT NULL;
+ALTER TABLE Payments ADD FOREIGN KEY (ReceivedByStaffID) REFERENCES Staff(StaffID);
+
+-- DamageReports
+ALTER TABLE DamageReports ADD COLUMN CopyID INT NOT NULL;
+ALTER TABLE DamageReports ADD FOREIGN KEY (CopyID) REFERENCES BookCopies(CopyID);
+
+-- BookCopies (optional)
+ALTER TABLE BookCopies ADD COLUMN BarcodeNumber VARCHAR(50) UNIQUE NULL;
+ALTER TABLE BookCopies ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+--Add CHECK constraints for status fields to ensure data integrity
+ALTER TABLE BookCopies ADD CONSTRAINT chk_status CHECK (Status IN ('Available', 'Borrowed', 'Reserved_on_Shelf', 'Damaged', 'Disposed'));
+ALTER TABLE BorrowingRecords ADD CONSTRAINT chk_borrow_status CHECK (Status IN ('Pending', 'Borrowed', 'Returned', 'Overdue', 'Expired'));
+ALTER TABLE Fines ADD CONSTRAINT chk_fine_status CHECK (FineStatus IN ('Unpaid', 'Partial', 'Paid', 'Waived'));
+ALTER TABLE Payments ADD CONSTRAINT chk_payment_method CHECK (PaymentMethod IN ('Cash', 'Card', 'Online'));
+
+
+
+-- Create a restricted view for member searches
 CREATE VIEW MemberBookView AS
 SELECT DISTINCT 
     b.BookID, b.Title, b.ISBN, b.Year, b.Edition, b.Language,
@@ -221,14 +252,8 @@ WHERE EXISTS (SELECT 1 FROM BookCopies bc2 WHERE bc2.BookID = b.BookID AND bc2.S
 GROUP BY b.BookID;
 
 
---Add CHECK constraints for status fields to ensure data integrity
-ALTER TABLE BookCopies ADD CONSTRAINT chk_status CHECK (Status IN ('Available', 'Borrowed', 'Reserved_on_Shelf', 'Damaged', 'Disposed'));
-ALTER TABLE BorrowingRecords ADD CONSTRAINT chk_borrow_status CHECK (Status IN ('Pending', 'Borrowed', 'Returned', 'Overdue', 'Expired'));
-ALTER TABLE Fines ADD CONSTRAINT chk_fine_status CHECK (FineStatus IN ('Unpaid', 'Partial', 'Paid', 'Waived'));
-ALTER TABLE Payments ADD CONSTRAINT chk_payment_method CHECK (PaymentMethod IN ('Cash', 'Card', 'Online'));
 
-
---Add a trigger to prevent borrowing if member has unpaid fines
+-- Add a trigger to prevent borrowing if member has unpaid fines
 DELIMITER $$
 CREATE TRIGGER check_member_fines_before_borrow
 BEFORE INSERT ON BorrowingRecords
@@ -247,7 +272,7 @@ BEGIN
 END$$
 DELIMITER ;
 
---Add a trigger to automatically calculate overdue fines
+-- Add a trigger to automatically calculate overdue fines
 DELIMITER $$
 CREATE TRIGGER calculate_overdue_fine
 BEFORE UPDATE ON BorrowingRecords
@@ -266,23 +291,7 @@ END$$
 DELIMITER ;
 
 
---Create a restricted view for member searches (hides sensitive data)
-CREATE VIEW MemberBookView AS
-SELECT DISTINCT 
-    b.BookID, b.Title, b.ISBN, b.Year, b.Edition, b.Language,
-    GROUP_CONCAT(DISTINCT a.Name) AS Authors,
-    c.CategoryName,
-    (SELECT COUNT(*) FROM BookCopies bc WHERE bc.BookID = b.BookID AND bc.Status = 'Available') AS AvailableCopies
-FROM Books b
-LEFT JOIN BookAuthors ba ON b.BookID = ba.BookID
-LEFT JOIN Authors a ON ba.AuthorID = a.AuthorID
-LEFT JOIN Categories c ON b.CategoryID = c.CategoryID
-WHERE EXISTS (SELECT 1 FROM BookCopies bc2 WHERE bc2.BookID = b.BookID AND bc2.Status != 'Disposed')
-GROUP BY b.BookID;
-
-
-
---View For Convenience (Views)
+-- View For Convenience (Views)
 View for outstanding fines (admin report)
 sql
 CREATE VIEW OutstandingFinesReport AS
@@ -300,7 +309,7 @@ LEFT JOIN Books b ON bc.BookID = b.BookID
 WHERE f.FineStatus IN ('Unpaid', 'Partial')
 ORDER BY f.Amount DESC;
 
---View for currently borrowed books
+-- View for currently borrowed books
 CREATE VIEW CurrentlyBorrowedView AS
 SELECT 
     u.FullName AS MemberName,
@@ -314,3 +323,19 @@ JOIN BookCopies bc ON br.CopyID = bc.CopyID
 JOIN Books b ON bc.BookID = b.BookID
 WHERE br.Status IN ('Borrowed', 'Overdue');
 
+-- Foreign key indexes (prevents full table scans on joins)
+CREATE INDEX idx_borrowing_member ON BorrowingRecords(MemberID);
+CREATE INDEX idx_borrowing_copy ON BorrowingRecords(CopyID);
+CREATE INDEX idx_borrowing_status ON BorrowingRecords(Status);
+CREATE INDEX idx_fines_user ON Fines(UserID);
+CREATE INDEX idx_fines_status ON Fines(FineStatus);
+CREATE INDEX idx_returns_borrow ON Returns(BorrowID);
+CREATE INDEX idx_reservations_member ON Reservations(MemberID);
+CREATE INDEX idx_reservations_status ON Reservations(Status);
+CREATE INDEX idx_bookcopies_book ON BookCopies(BookID);
+CREATE INDEX idx_bookcopies_status ON BookCopies(Status);
+
+-- Search indexes
+CREATE INDEX idx_books_title ON Books(Title);
+CREATE INDEX idx_books_isbn ON Books(ISBN);
+CREATE INDEX idx_users_email ON Users(Email);
